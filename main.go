@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"encoding/json"
+	"math"
+
 	"github.com/fatih/color"
 	"github.com/gosuri/uilive"
 	"github.com/mattn/go-colorable"
@@ -18,7 +20,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"math"
 )
 
 // Will be set by go-build
