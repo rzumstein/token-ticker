@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// https://api.coinbase.com.com/v2/
-const coinbaseBaseApi = "https://api.coinbase.com/v2/prices/"
+// https://api.pro.coinbase.com.com/
+const coinbaseBaseApi = "https://api.pro.coinbase.com/"
 
 type coinBaseClient struct {
 	exchangeBaseClient
@@ -18,23 +20,16 @@ type coinBaseClient struct {
 }
 
 type coinBaseToken struct {
-	Data struct {
-		Base     string `json:"base"`
-		Currency string `json:"currency"`
-		Amount   string `json:"amount"`
-	} `json:"data"`
+	TradeID int       `json:"trade_id"`
+	Price   string    `json:"price"`
+	Size    string    `json:"size"`
+	Bid     string    `json:"bid"`
+	Ask     string    `json:"ask"`
+	Volume  string    `json:"volume"`
+	Time    time.Time `json:"time"`
 }
 
-type coinbaseCurrencyResponse struct {
-	Base     string
-	Currency string
-	Amount   string
-}
-
-type coinbaseInvalidCurrencyResponse struct {
-	id      string
-	message string
-}
+type coinBaseHistoricRates [][]float64
 
 // I don't like returning a general type here, any other better way to use the factory pattern?
 func NewCoinbaseClient(httpClient *http.Client) *coinBaseClient {
@@ -46,7 +41,7 @@ func (client *coinBaseClient) GetName() string {
 }
 
 func (client *coinBaseClient) GetSymbolPrice(symbol string) (*SymbolPrice, error) {
-	resp, err := client.httpGet(symbol+"/spot", nil)
+	resp, err := client.httpGet("products/"+symbol+"/ticker", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -61,25 +56,50 @@ func (client *coinBaseClient) GetSymbolPrice(symbol string) (*SymbolPrice, error
 		return nil, errors.New("placeholder")
 	}
 
-	// bb, _ := ioutil.ReadAll(resp.Body)
-	// bs := string(bb)
-	// fmt.Println(bs)
-
 	var token coinBaseToken
 	fmt.Println(token)
 	if err := decoder.Decode(&token); err != nil {
 		return nil, err
 	}
 	fmt.Println(token)
+	price, _ := strconv.ParseFloat(token.Price, 64)
+
+	x, _ := client.GetHistoricRates(symbol)
+	fmt.Println(x)
 
 	return &SymbolPrice{
-		Symbol:           token.Data.Base,
-		Price:            token.Data.Amount,
+		Symbol:           strings.Split(symbol, "-")[0],
+		Price:            strconv.FormatFloat(price, 'f', 2, 64),
 		Source:           client.GetName(),
-		UpdateAt:         time.Unix(1, 0), //time.Unix(token.LastUpdated, 0),
-		PercentChange1h:  1.0,             //token.PercentChange1h,
-		PercentChange24h: 2.0,             //token.PercentChange24h
+		UpdateAt:         token.Time,
+		PercentChange1h:  1.0, //token.PercentChange1h,
+		PercentChange24h: 2.0, //token.PercentChange24h
 	}, nil
+}
+
+func (client *coinBaseClient) GetHistoricRates(symbol string) (coinBaseHistoricRates, error) {
+	resp, err := client.httpGet("products/"+symbol+"/candles?start=2018-10-11T12:49:00Z&end=2018-10-11T12:49:01Z", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+
+	if resp.StatusCode == 404 {
+		if err := decoder.Decode(resp); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("Historic rates not found for " + symbol)
+	}
+
+	var token coinBaseHistoricRates
+	if err := decoder.Decode(&token); err != nil {
+		return nil, err
+	}
+	fmt.Println(token)
+
+	return [][]float64{}, nil
 }
 
 func init() {
